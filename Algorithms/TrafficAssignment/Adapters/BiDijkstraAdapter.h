@@ -35,7 +35,7 @@ class BiDijkstraAdapter {
     // Constructs a query algorithm instance working on the specified data.
     QueryAlgo(
         const InputGraph& inputGraph, const InputGraph& reverseGraph,
-        AlignedVector<int>& flowsOnForwardEdges, AlignedVector<int>& flowsOnReverseEdges)
+        AlignedVector<double>& flowsOnForwardEdges, AlignedVector<double>& flowsOnReverseEdges)
         : search(inputGraph, reverseGraph),
           flowsOnForwardEdges(flowsOnForwardEdges),
           flowsOnReverseEdges(flowsOnReverseEdges),
@@ -46,7 +46,8 @@ class BiDijkstraAdapter {
     }
 
     // Computes shortest paths from each source to its target simultaneously.
-    void run(std::array<int, K>& sources, std::array<int, K>& targets, const int k) {
+    void run(std::array<int, K>& sources, std::array<int, K>& targets,
+             const std::array<double, K>& volumes, const int k) {
       // Run a centralized bidirectional search.
       search.run(sources, targets);
 
@@ -54,11 +55,11 @@ class BiDijkstraAdapter {
       for (auto i = 0; i < k; ++i) {
         for (const auto e : search.getEdgePathToMeetingVertex(i)) {
           assert(e >= 0); assert(e < localFlowsOnForwardEdges.size());
-          ++localFlowsOnForwardEdges[e];
+          localFlowsOnForwardEdges[e] += volumes[i];
         }
         for (const auto e : search.getEdgePathFromMeetingVertex(i)) {
           assert(e >= 0); assert(e < localFlowsOnReverseEdges.size());
-          ++localFlowsOnReverseEdges[e];
+          localFlowsOnReverseEdges[e] += volumes[i];
         }
       }
     }
@@ -80,10 +81,10 @@ class BiDijkstraAdapter {
     using Dijkstra = StandardDijkstra<InputGraph, WeightT, LabelSet>;
 
     BiDijkstra<Dijkstra> search;               // The bidirectional search.
-    AlignedVector<int>& flowsOnForwardEdges;   // The flows in the forward graph.
-    AlignedVector<int>& flowsOnReverseEdges;   // The flows in the reverse graph.
-    std::vector<int> localFlowsOnForwardEdges; // The local flows in the forward graph.
-    std::vector<int> localFlowsOnReverseEdges; // The local flows in the reverse graph.
+    AlignedVector<double>& flowsOnForwardEdges;   // The flows in the forward graph.
+    AlignedVector<double>& flowsOnReverseEdges;   // The flows in the reverse graph.
+    std::vector<double> localFlowsOnForwardEdges; // The local flows in the forward graph.
+    std::vector<double> localFlowsOnReverseEdges; // The local flows in the reverse graph.
   };
 
   // Constructs an adapter for bidirectional search.
@@ -115,7 +116,7 @@ class BiDijkstraAdapter {
   }
 
   // Propagates the flows on the edges in the search graphs to the edges in the input graph.
-  void propagateFlowsToInputEdges(AlignedVector<int>& flowsOnInputEdges) {
+  void propagateFlowsToInputEdges(AlignedVector<double>& flowsOnInputEdges) {
     assert(flowsOnInputEdges.size() == flowsOnInputEdges.size());
     flowsOnInputEdges.swap(flowsOnForwardEdges);
     FORALL_EDGES(inputGraph, e)
@@ -126,8 +127,8 @@ class BiDijkstraAdapter {
   const InputGraph& inputGraph; // The input graph.
   InputGraph reverseGraph;      // The reverse graph.
 
-  AlignedVector<int> flowsOnForwardEdges; // The flows on the edges in the forward graph.
-  AlignedVector<int> flowsOnReverseEdges; // The flows on the edges in the reverse graph.
+  AlignedVector<double> flowsOnForwardEdges; // The flows on the edges in the forward graph.
+  AlignedVector<double> flowsOnReverseEdges; // The flows on the edges in the reverse graph.
 };
 
 }

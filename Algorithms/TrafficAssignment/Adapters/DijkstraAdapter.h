@@ -31,7 +31,7 @@ class DijkstraAdapter {
   class QueryAlgo {
    public:
     // Constructs a query algorithm instance working on the specified data.
-    QueryAlgo(const InputGraph& inputGraph, AlignedVector<int>& flowsOnForwardEdges)
+    QueryAlgo(const InputGraph& inputGraph, AlignedVector<double>& flowsOnForwardEdges)
         : search(inputGraph),
           flowsOnForwardEdges(flowsOnForwardEdges),
           localFlowsOnForwardEdges(flowsOnForwardEdges.size()) {
@@ -39,7 +39,8 @@ class DijkstraAdapter {
     }
 
     // Computes shortest paths from each source to its target simultaneously.
-    void run(std::array<int, K>& sources, std::array<int, K>& targets, const int k) {
+    void run(std::array<int, K>& sources, std::array<int, K>& targets,
+             const std::array<double, K>& volumes, const int k) {
       // Run a centralized Dijkstra search.
       search.run(sources, targets);
 
@@ -47,7 +48,7 @@ class DijkstraAdapter {
       for (auto i = 0; i < k; ++i) {
         for (const auto e : search.getReverseEdgePath(targets[i], i)) {
           assert(e >= 0); assert(e < localFlowsOnForwardEdges.size());
-          ++localFlowsOnForwardEdges[e];
+          localFlowsOnForwardEdges[e] += volumes[i];
         }
       }
     }
@@ -67,8 +68,8 @@ class DijkstraAdapter {
     using Dijkstra = StandardDijkstra<InputGraph, WeightT, LabelSet>;
 
     Dijkstra search;                           // The Dijkstra search.
-    AlignedVector<int>& flowsOnForwardEdges;   // The flows in the forward graph.
-    std::vector<int> localFlowsOnForwardEdges; // The local flows in the forward graph.
+    AlignedVector<double>& flowsOnForwardEdges;   // The flows in the forward graph.
+    std::vector<double> localFlowsOnForwardEdges; // The local flows in the forward graph.
   };
 
   // Constructs an adapter for Dijkstra's algorithm.
@@ -89,14 +90,14 @@ class DijkstraAdapter {
   }
 
   // Propagates the flows on the edges in the search graphs to the edges in the input graph.
-  void propagateFlowsToInputEdges(AlignedVector<int>& flowsOnInputEdges) {
+  void propagateFlowsToInputEdges(AlignedVector<double>& flowsOnInputEdges) {
     assert(flowsOnInputEdges.size() == flowsOnInputEdges.size());
     flowsOnInputEdges.swap(flowsOnForwardEdges);
   }
 
  private:
   const InputGraph& inputGraph;           // The input graph.
-  AlignedVector<int> flowsOnForwardEdges; // The flows on the edges in the forward graph.
+  AlignedVector<double> flowsOnForwardEdges; // The flows on the edges in the forward graph.
 };
 
 }

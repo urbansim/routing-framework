@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <vector>
 
@@ -17,6 +18,7 @@
 #include "DataStructures/Labels/SimdLabelSet.h"
 #include "DataStructures/Partitioning/SeparatorDecomposition.h"
 #include "Tools/Simd/AlignedVector.h"
+#include "Tools/Timer.h"
 
 namespace trafficassignment {
 
@@ -40,7 +42,7 @@ class CCHAdapter {
     // Constructs a query algorithm instance working on the specified data.
     QueryAlgo(
         const CH& minimumWeightedCH, const std::vector<int32_t>& eliminationTree,
-        AlignedVector<int>& flowsOnUpEdges, AlignedVector<int>& flowsOnDownEdges)
+        AlignedVector<double>& flowsOnUpEdges, AlignedVector<double>& flowsOnDownEdges)
         : minimumWeightedCH(minimumWeightedCH),
           search(minimumWeightedCH, eliminationTree),
           flowsOnUpEdges(flowsOnUpEdges),
@@ -52,25 +54,38 @@ class CCHAdapter {
     }
 
     // Computes shortest paths from each source to its target simultaneously.
-    void run(std::array<int, K>& sources, std::array<int, K>& targets, const int k) {
+    void run(std::array<int, K>& sources, std::array<int, K>& targets,
+             const std::array<double, K>& volumes, const int k) {
       // Run a centralized CH search.
       for (auto i = 0; i < K; ++i) {
         sources[i] = minimumWeightedCH.rank(sources[i]);
         targets[i] = minimumWeightedCH.rank(targets[i]);
       }
+#ifdef TA_CCH_PROFILE
+      const auto searchStarted = std::chrono::steady_clock::now();
+#endif
       search.run(sources, targets);
+#ifdef TA_CCH_PROFILE
+      searchTime += std::chrono::duration<double>(
+          std::chrono::steady_clock::now() - searchStarted).count();
+      const auto loadingStarted = std::chrono::steady_clock::now();
+#endif
 
       // Assign flow to the edges on the computed paths.
       for (auto i = 0; i < k; ++i) {
         for (const auto e : search.getUpEdgePath(i)) {
           assert(e >= 0); assert(e < localFlowsOnUpEdges.size());
-          ++localFlowsOnUpEdges[e];
+          localFlowsOnUpEdges[e] += volumes[i];
         }
         for (const auto e : search.getDownEdgePath(i)) {
           assert(e >= 0); assert(e < localFlowsOnDownEdges.size());
-          ++localFlowsOnDownEdges[e];
+          localFlowsOnDownEdges[e] += volumes[i];
         }
       }
+#ifdef TA_CCH_PROFILE
+      loadingTime += std::chrono::duration<double>(
+          std::chrono::steady_clock::now() - loadingStarted).count();
+#endif
     }
 
     // Returns the length of the i-th shortest path.
@@ -86,13 +101,22 @@ class CCHAdapter {
         flowsOnDownEdges[e] += localFlowsOnDownEdges[e];
     }
 
+#ifdef TA_CCH_PROFILE
+    double getSearchTime() const { return searchTime; }
+    double getLoadingTime() const { return loadingTime; }
+#endif
+
    private:
     const CH& minimumWeightedCH;            // The CH resulting from perfect customization.
     EliminationTreeQuery<LabelSet> search;  // The CH search on the minimum weighted CH.
-    AlignedVector<int>& flowsOnUpEdges;     // The flows in the upward graph.
-    AlignedVector<int>& flowsOnDownEdges;   // The flows in the downward graph.
-    std::vector<int> localFlowsOnUpEdges;   // The local flows in the upward graph.
-    std::vector<int> localFlowsOnDownEdges; // The local flows in the downward graph.
+    AlignedVector<double>& flowsOnUpEdges;     // The flows in the upward graph.
+    AlignedVector<double>& flowsOnDownEdges;   // The flows in the downward graph.
+    std::vector<double> localFlowsOnUpEdges;   // The local flows in the upward graph.
+    std::vector<double> localFlowsOnDownEdges; // The local flows in the downward graph.
+#ifdef TA_CCH_PROFILE
+    double searchTime = 0;
+    double loadingTime = 0;
+#endif
   };
 
   // Constructs an adapter for CCHs.
@@ -154,7 +178,7 @@ class CCHAdapter {
   }
 
   // Propagates the flows on the edges in the search graphs to the edges in the input graph.
-  void propagateFlowsToInputEdges(AlignedVector<int>& flowsOnInputEdges) {
+  void propagateFlowsToInputEdges(AlignedVector<double>& flowsOnInputEdges) {
     const auto& upGraph = minimumWeightedCH.upwardGraph();
     const auto& downGraph = minimumWeightedCH.downwardGraph();
     for (auto u = inputGraph.numVertices() - 1; u >= 0; --u) {
@@ -181,8 +205,8 @@ class CCHAdapter {
   CCHMetric currentMetric;      // The current metric for the CCH.
   CH minimumWeightedCH;         // The minimum weighted CH resulting from perfect customization.
 
-  AlignedVector<int> flowsOnUpEdges;   // The flows on the edges in the upward graph.
-  AlignedVector<int> flowsOnDownEdges; // The flows on the edges in the downward graph.
+  AlignedVector<double> flowsOnUpEdges;   // The flows on the edges in the upward graph.
+  AlignedVector<double> flowsOnDownEdges; // The flows on the edges in the downward graph.
 };
 
 }
