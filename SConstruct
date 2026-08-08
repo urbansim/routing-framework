@@ -8,7 +8,8 @@ cflags = '-std=c99'
 cxxflags = '-std=c++14'
 ccflags = (
   '-Werror -Wfatal-errors -Wpedantic -pedantic-errors -Wall -Wextra '
-  '-Wno-missing-braces -Wno-unknown-pragmas -Wno-strict-overflow -Wno-sign-compare ')
+  '-Wno-missing-braces -Wno-unknown-pragmas -Wno-strict-overflow -Wno-sign-compare '
+  '-Wno-stringop-truncation ')
 
 # Additional compiler options per build variant.
 debug = '-O0 -g '

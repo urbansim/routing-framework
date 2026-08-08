@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -54,6 +55,12 @@ class AllOrNothingAssignment {
     ProgressBar bar(std::ceil(1.0 * odPairs.size() / (K * skipInterval)), verbose);
     trafficFlows.assign(inputGraph.numEdges(), 0);
     stats.startIteration();
+#ifdef TA_CCH_PROFILE
+    lastSearchTime = 0;
+    lastLoadingTime = 0;
+    lastMergeTime = 0;
+    lastPropagationTime = 0;
+#endif
     auto totalNumPairsSampledBefore = 0;
     #pragma omp parallel
     {
@@ -69,14 +76,17 @@ class AllOrNothingAssignment {
         // Run multiple shortest-path computations simultaneously.
         std::array<int, K> sources;
         std::array<int, K> targets;
+        std::array<double, K> volumes;
         sources.fill(odPairs[i].origin);
         targets.fill(odPairs[i].destination);
+        volumes.fill(odPairs[i].volume * skipInterval);
         auto k = 1;
         for (; k < K && i + k * skipInterval < odPairs.size(); ++k) {
           sources[k] = odPairs[i + k * skipInterval].origin;
           targets[k] = odPairs[i + k * skipInterval].destination;
+          volumes[k] = odPairs[i + k * skipInterval].volume * skipInterval;
         }
-        queryAlgo.run(sources, targets, k);
+        queryAlgo.run(sources, targets, volumes, k);
 
         for (auto j = 0; j < k; ++j) {
           // Maintain the avg and max change in the OD distances between the last two iterations.
@@ -96,7 +106,16 @@ class AllOrNothingAssignment {
 
       #pragma omp critical (combineResults)
       {
+#ifdef TA_CCH_PROFILE
+        lastSearchTime += queryAlgo.getSearchTime();
+        lastLoadingTime += queryAlgo.getLoadingTime();
+        const auto mergeStarted = std::chrono::steady_clock::now();
+#endif
         queryAlgo.addLocalToGlobalFlows();
+#ifdef TA_CCH_PROFILE
+        lastMergeTime += std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - mergeStarted).count();
+#endif
         stats.lastChecksum += checksum;
         stats.prevMinPathCost += prevMinPathCost;
         stats.avgChangeInDistances += avgChange;
@@ -106,8 +125,14 @@ class AllOrNothingAssignment {
     }
     bar.finish();
 
+#ifdef TA_CCH_PROFILE
+    const auto propagationStarted = std::chrono::steady_clock::now();
+#endif
     shortestPathAlgo.propagateFlowsToInputEdges(trafficFlows);
-    std::for_each(trafficFlows.begin(), trafficFlows.end(), [&](int& f) { f *= skipInterval; });
+#ifdef TA_CCH_PROFILE
+    lastPropagationTime = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - propagationStarted).count();
+#endif
     stats.lastQueryTime = timer.elapsed();
     stats.avgChangeInDistances /= totalNumPairsSampledBefore;
     stats.finishIteration();
@@ -123,12 +148,18 @@ class AllOrNothingAssignment {
   }
 
   // Returns the traffic flow on edge e.
-  const int& trafficFlowOn(const int e) const {
+  const double& trafficFlowOn(const int e) const {
     assert(e >= 0); assert(e < inputGraph.numEdges());
     return trafficFlows[e];
   }
 
   AllOrNothingAssignmentStats stats; // Statistics about the execution.
+#ifdef TA_CCH_PROFILE
+  double lastSearchTime = 0;
+  double lastLoadingTime = 0;
+  double lastMergeTime = 0;
+  double lastPropagationTime = 0;
+#endif
 
  private:
   // The maximum number of simultaneous shortest-path computations.
@@ -139,6 +170,6 @@ class AllOrNothingAssignment {
   ShortestPathAlgoT shortestPathAlgo; // Algorithm computing shortest paths between OD pairs.
   const InputGraph& inputGraph;       // The input graph.
   const ODPairs& odPairs;             // The OD pairs to be assigned onto the graph.
-  AlignedVector<int> trafficFlows;    // The traffic flows on the edges.
+  AlignedVector<double> trafficFlows;    // The traffic flows on the edges.
   const bool verbose;                 // Should informative messages be displayed?
 };

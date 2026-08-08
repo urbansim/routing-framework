@@ -38,8 +38,10 @@ class EliminationTreeQuery {
     forwardSearch.init(sources);
     reverseSearch.init(targets);
     tentativeDistances = INFTY;
-    while (forwardSearch.getNextVertex() != INVALID_VERTEX)
-      if (forwardSearch.getNextVertex() <= reverseSearch.getNextVertex()) {
+    while (forwardSearch.getNextVertex() != INVALID_VERTEX ||
+           reverseSearch.getNextVertex() != INVALID_VERTEX)
+      if (forwardSearch.getNextVertex() != INVALID_VERTEX &&
+          forwardSearch.getNextVertex() <= reverseSearch.getNextVertex()) {
         updateTentativeDistances(forwardSearch.getNextVertex());
         forwardSearch.settleNextVertex();
       } else {

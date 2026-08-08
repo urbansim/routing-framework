@@ -27,8 +27,9 @@ struct OriginDestination {
 // Zones or traffic cells represent for example residential or commercial areas.
 struct ClusteredOriginDestination : public OriginDestination {
   // Constructs a clustered OD-pair from o to d.
-  ClusteredOriginDestination(const int o, const int d, const int oZone, const int dZone)
-      : OriginDestination(o, d), originZone(oZone), destinationZone(dZone) {}
+  ClusteredOriginDestination(
+      const int o, const int d, const int oZone, const int dZone, const double volume = 1.0)
+      : OriginDestination(o, d), originZone(oZone), destinationZone(dZone), volume(volume) {}
 
   // Compares this clustered OD-pair with rhs lexicographically.
   bool operator<(const ClusteredOriginDestination& rhs) const {
@@ -50,6 +51,7 @@ struct ClusteredOriginDestination : public OriginDestination {
 
   int originZone;
   int destinationZone;
+  double volume;
 };
 
 // Reads the specified file into a vector of OD-pairs.
@@ -74,17 +76,19 @@ std::vector<OriginDestination> importODPairsFrom(const std::string& infile) {
 std::vector<ClusteredOriginDestination> importClusteredODPairsFrom(const std::string& infile) {
   std::vector<ClusteredOriginDestination> pairs;
   int origin, destination, originZone = INVALID_ID, destinationZone = INVALID_ID;
+  double volume = 1.0;
   using TrimPolicy = io::trim_chars<>;
   using QuotePolicy = io::no_quote_escape<','>;
   using OverflowPolicy = io::throw_on_overflow;
   using CommentPolicy = io::single_line_comment<'#'>;
-  io::CSVReader<4, TrimPolicy, QuotePolicy, OverflowPolicy, CommentPolicy> in(infile);
+  io::CSVReader<5, TrimPolicy, QuotePolicy, OverflowPolicy, CommentPolicy> in(infile);
   const io::ignore_column ignore = io::ignore_extra_column | io::ignore_missing_column;
-  in.read_header(ignore, "origin", "destination", "origin_zone", "destination_zone");
-  while (in.read_row(origin, destination, originZone, destinationZone)) {
+  in.read_header(ignore, "origin", "destination", "origin_zone", "destination_zone", "volume");
+  while (in.read_row(origin, destination, originZone, destinationZone, volume)) {
     assert(origin >= 0);
     assert(destination >= 0);
-    pairs.emplace_back(origin, destination, originZone, destinationZone);
+    assert(volume >= 0);
+    pairs.emplace_back(origin, destination, originZone, destinationZone, volume);
   }
   return pairs;
 }
